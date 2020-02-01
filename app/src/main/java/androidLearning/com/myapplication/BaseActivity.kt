@@ -8,6 +8,7 @@ import androidx.constraintlayout.widget.ConstraintLayout
 
 abstract class BaseActivity : AppCompatActivity() {
 
+
     lateinit var progressBar: ProgressBar
 
     override fun setContentView(layoutResID: Int) {

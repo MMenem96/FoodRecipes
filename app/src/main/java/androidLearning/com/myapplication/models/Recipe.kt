@@ -4,6 +4,7 @@ package mitchcourses.com.myapplication.models
 import com.google.gson.annotations.SerializedName
 import java.io.Serializable
 
+//Implementing serializable to send objects from this class between intents
 data class Recipe(
     @SerializedName("_id")
     val id: String,
@@ -23,4 +24,4 @@ data class Recipe(
     val sourceUrl: String,
     @SerializedName("title")
     val title: String
-    ) : Serializable
+) : Serializable
