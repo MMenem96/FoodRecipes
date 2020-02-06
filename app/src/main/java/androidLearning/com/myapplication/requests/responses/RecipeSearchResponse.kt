@@ -2,7 +2,7 @@ package mitchcourses.com.myapplication.requests.responses
 
 
 import com.google.gson.annotations.SerializedName
-import mitchcourses.com.myapplication.models.Recipe
+import androidLearning.com.myapplication.models.Recipe
 
 data class RecipeSearchResponse(
     @SerializedName("count")

@@ -1,23 +1,17 @@
 package mitchcourses.com.myapplication.viewmodels
 
+import android.app.Application
+import androidLearning.com.myapplication.models.Recipe
+import androidLearning.com.myapplication.repositories.RecipeRepository
+import androidLearning.com.myapplication.util.Resource
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.ViewModel
-import mitchcourses.com.myapplication.models.Recipe
-import mitchcourses.com.myapplication.repositories.RecipeRepository
 
-class RecipeDetailsViewModel() : ViewModel() {
-    var recipeId: String = ""
-    var didRetrieveRecipe: Boolean = false
+class RecipeDetailsViewModel(application: Application) : AndroidViewModel(application) {
 
-    val getRecipe: LiveData<Recipe> by lazy {
-        return@lazy RecipeRepository.getRecipe
-    }
 
-    fun isRecipeRequestTimeOut(): LiveData<Boolean> = RecipeRepository.isRecipeRequestTimeOut()
-
-    fun getRecipeById(recipeId: String) {
-        this.recipeId = recipeId
-        RecipeRepository.getRecipeApi(recipeId)
+    fun getRecipeById(recipeId: String): LiveData<Resource<Recipe>> {
+        return RecipeRepository.searchRecipeApi(recipeId)
     }
 
 }

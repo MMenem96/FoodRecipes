@@ -1,17 +1,25 @@
 package mitchcourses.com.myapplication.adapters
 
-import android.net.Uri
+import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidLearning.com.myapplication.R
+import androidLearning.com.myapplication.models.Recipe
 import androidx.recyclerview.widget.RecyclerView
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
-import mitchcourses.com.myapplication.models.Recipe
+import com.bumptech.glide.ListPreloader
+import com.bumptech.glide.RequestBuilder
+import com.bumptech.glide.RequestManager
+import com.bumptech.glide.util.ViewPreloadSizeProvider
 import mitchcourses.com.myapplication.util.Constants
+import java.util.*
+import kotlin.collections.ArrayList
 
-class RecipeRecyclerAdapter(val onRecipeListener: OnRecipeListener) :
-    RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+class RecipeRecyclerAdapter(
+    val onRecipeListener: OnRecipeListener,
+    val requestManager: RequestManager,
+    val glideViewPreLoader: ViewPreloadSizeProvider<String>
+) :
+    RecyclerView.Adapter<RecyclerView.ViewHolder>(), ListPreloader.PreloadModelProvider<String> {
 
     companion object {
         val RECIPE_TYPE = 1
@@ -32,7 +40,7 @@ class RecipeRecyclerAdapter(val onRecipeListener: OnRecipeListener) :
                         parent,
                         false
                     ),
-                    onRecipeListener
+                    onRecipeListener, requestManager, glideViewPreLoader
                 )
             }
             LOADING_TYPE -> {
@@ -65,7 +73,7 @@ class RecipeRecyclerAdapter(val onRecipeListener: OnRecipeListener) :
                         parent,
                         false
                     ),
-                    onRecipeListener
+                    onRecipeListener, requestManager
                 )
             }
         }
@@ -76,51 +84,51 @@ class RecipeRecyclerAdapter(val onRecipeListener: OnRecipeListener) :
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         if (getItemViewType(position) == RECIPE_TYPE) {
-            Glide.with(holder.itemView.context)
-                .load(recipeList.get(position).imageUrl)
-                .placeholder(R.drawable.ic_launcher_background)
-                .into((holder as RecipeViewHolder).image)
-            holder.title.text = recipeList.get(position).title
-            holder.publisher.text = recipeList.get(position).publisher
-            holder.socialScore.text =
-                Math.round(recipeList.get(position).socialRank ?: 0.0).toString()
+            (holder as RecipeViewHolder).onBind(recipeList[position])
         } else if (getItemViewType(position) == CATEGORY_TYPE) {
-            val imagePath: Uri = Uri.parse(
-                "android.resource://mitchcourses.com.myapplication/drawable/${recipeList.get(
-                    position
-                ).title.toLowerCase()}"
-            )
-            Glide.with(holder.itemView.context)
-                .load(imagePath)
-                .apply(RequestOptions.circleCropTransform())
-                .placeholder(R.drawable.ic_launcher_background)
-                .into((holder as CategoryViewHolder).categoryImage)
-            holder.categoryTitle.text = recipeList.get(position).title
+            (holder as CategoryViewHolder).onBind(recipeList[position])
         }
     }
 
     override fun getItemViewType(position: Int): Int {
         if (recipeList.get(position).socialRank.toInt() == -1)
             return CATEGORY_TYPE
-        else if (recipeList.get(position).title.equals("LOADING..."))
+        else if (recipeList[position].title == "LOADING...")
             return LOADING_TYPE
-        else if (position == recipeList.size - 1 && position != 0 && !recipeList.get(position).title.equals(
-                "EXHAUSTED..."
-            )
-        )
-            return LOADING_TYPE
-        else if (recipeList.get(position).title.equals("EXHAUSTED..."))
+        else if (recipeList[position].title == "EXHAUSTED...")
             return EXHUASTED_TYPE
         else
             return RECIPE_TYPE
     }
+
+    //Display Loading along search process
+    fun displayOnlyLoading() {
+        recipeList.clear()
+        val recipe =
+            Recipe(
+                "",
+                "",
+                listOf(""),
+                "",
+                "",
+                "",
+                0.0,
+                "",
+                title = "LOADING...",
+                timeStamp =0
+            )
+        recipeList.add(recipe)
+        notifyDataSetChanged()
+    }
+
 
     fun displaySearchCategories() {
         val categoriesRecipeList: MutableList<Recipe> = ArrayList()
         for (i in Constants.DEFAULT_SEARCH_CATEGORY_IMAGES.indices) {
             val categoryRecipe: Recipe = Recipe(
                 "", Constants.DEFAULT_SEARCH_CATEGORY_IMAGES[i], listOf(""),
-                "", "", "", -1.0, "", Constants.DEFAULT_SEARCH_CATEGORY_IMAGES[i]
+                "", "", "", -1.0, "", Constants.DEFAULT_SEARCH_CATEGORY_IMAGES[i],
+                0
             )
             categoriesRecipeList.add(categoryRecipe)
         }
@@ -128,13 +136,23 @@ class RecipeRecyclerAdapter(val onRecipeListener: OnRecipeListener) :
         notifyDataSetChanged()
     }
 
+    //Pagination Loading
     fun displayLoading() {
         if (!isLoading()) {
             val recipe =
-                Recipe("", "", listOf(""), "", "", "", 0.0, "", title = "LOADING...")
-            val loadingRecipeList: MutableList<Recipe> = ArrayList()
-            loadingRecipeList.add(recipe)
-            recipeList = loadingRecipeList
+                Recipe(
+                    "",
+                    "",
+                    listOf(""),
+                    "",
+                    "",
+                    "",
+                    0.0,
+                    "",
+                    title = "LOADING...",
+                    timeStamp = 0
+                )
+            recipeList.add(recipe)
             notifyDataSetChanged()
         }
     }
@@ -143,19 +161,22 @@ class RecipeRecyclerAdapter(val onRecipeListener: OnRecipeListener) :
         hideLoading()
         val exhaustedRecipe = Recipe(
             "", "", listOf(""), "",
-            "", "", 0.0, "", "EXHAUSTED..."
+            "", "", 0.0, "", "EXHAUSTED...",
+            0
         )
         recipeList.add(exhaustedRecipe)
         notifyDataSetChanged()
     }
 
 
-    private fun hideLoading() {
+    fun hideLoading() {
         if (isLoading()) {
-            for (recipe in recipeList) {
-                if (recipe.title.equals("LOADING..."))
-                    recipeList.remove(recipe)
-            }
+            if (recipeList[0].title == "LOADING...")
+                recipeList.removeAt(0)
+
+            if (recipeList.size > 1 && recipeList[recipeList.size - 1].title == "LOADING...")
+                recipeList.removeAt(recipeList.size - 1)
+
             notifyDataSetChanged()
         }
     }
@@ -179,6 +200,18 @@ class RecipeRecyclerAdapter(val onRecipeListener: OnRecipeListener) :
             return recipeList.get(position)
         }
         return null
+    }
+
+    override fun getPreloadItems(position: Int): MutableList<String> {
+        val url = recipeList[position].imageUrl
+        if (TextUtils.isEmpty(url)) {
+            return Collections.emptyList()
+        }
+        return Collections.singletonList(url)
+    }
+
+    override fun getPreloadRequestBuilder(item: String): RequestBuilder<*>? {
+        return requestManager.load(item)
     }
 
 

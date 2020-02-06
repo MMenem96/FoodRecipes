@@ -1,8 +1,9 @@
 package mitchcourses.com.myapplication.requests
 
+import androidLearning.com.myapplication.requests.responses.ApiResponse
+import androidx.lifecycle.LiveData
 import mitchcourses.com.myapplication.requests.responses.RecipeResponse
 import mitchcourses.com.myapplication.requests.responses.RecipeSearchResponse
-import retrofit2.Call
 import retrofit2.http.GET
 import retrofit2.http.Query
 
@@ -13,11 +14,11 @@ interface RecipeApi {
     fun searchRecipe(
         @Query("q") query: String
         , @Query("page") pageNumber: Int
-    ): Call<RecipeSearchResponse>
+    ): LiveData<ApiResponse<RecipeSearchResponse>>
 
     //Search for a recipe
     @GET("api/get")
     fun getRecipe(
         @Query("rId") recipe_id: String
-    ): Call<RecipeResponse>
+    ): LiveData<ApiResponse<RecipeResponse>>
 }

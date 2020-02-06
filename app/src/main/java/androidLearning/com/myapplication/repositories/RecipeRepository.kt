@@ -1,80 +1,108 @@
-package mitchcourses.com.myapplication.repositories
+package androidLearning.com.myapplication.repositories
 
+import android.content.Context
 import android.util.Log
+import androidLearning.com.myapplication.models.Recipe
+import androidLearning.com.myapplication.presistence.RecipeDao
+import androidLearning.com.myapplication.presistence.RecipeDatabase
+import androidLearning.com.myapplication.requests.responses.ApiResponse
+import androidLearning.com.myapplication.util.NetworkBoundResource
+import androidLearning.com.myapplication.util.Resource
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.MediatorLiveData
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.Observer
-import mitchcourses.com.myapplication.models.Recipe
-import mitchcourses.com.myapplication.requests.RecipeApiClient
-
+import mitchcourses.com.myapplication.requests.ServiceGenerator
+import mitchcourses.com.myapplication.requests.responses.RecipeResponse
+import mitchcourses.com.myapplication.requests.responses.RecipeSearchResponse
+import mitchcourses.com.myapplication.util.Constants
 
 object RecipeRepository {
     private val TAG = "RecipeRepository"
-
-
-    val getRecipe: LiveData<Recipe> by lazy {
-
-        return@lazy RecipeApiClient.mRecipe
+    lateinit var context: Context
+    val recipeDao: RecipeDao by lazy {
+        return@lazy RecipeDatabase.getRecipeDatabase(context).getRecipeDao()
     }
 
+    fun searchRecipesApis(query: String, pageNumber: Int): LiveData<Resource<MutableList<Recipe>>> {
 
-    lateinit var query: String
-    var pageNumber: Int = 0
+        return object : NetworkBoundResource<MutableList<Recipe>, RecipeSearchResponse>() {
+            override fun saveCallResult(item: RecipeSearchResponse?) {
+                Log.d(TAG, "ItemsSize is ${item?.recipes?.size ?: 0}")
+                if (item?.recipes != null) {
+                    for (i in item.recipes.indices) {
+                        item.recipes[i].ingredients = listOf("")
+                    }
 
-    val mIsQueryExhausted: MutableLiveData<Boolean> =
-        MutableLiveData()
-    private val mRecipes = MediatorLiveData<MutableList<Recipe>>()
-
-    private val recipesList by lazy {
-        return@lazy RecipeApiClient.mRecipes
-    }
-
-    fun getRecipes(): LiveData<MutableList<Recipe>> {
-        mRecipes.addSource(recipesList, Observer { t ->
-            if (t != null) {
-                Log.d(TAG, "Recipes ${recipesList.value?.size}")
-                Log.d(TAG, "T is not null")
-                mRecipes.value = t
-                doneQuery(t)
-            } else {
-                //Search database cache
-                doneQuery(null)
+                    var index: Int = 0
+                    for (rowId in recipeDao.insertRecipes((item.recipes))) {
+                        if (rowId.toInt() == -1) {
+                            //If the recipe already exists...I don't want to set the ingredients or timestamp to not
+                            //be erased
+                            Log.d(TAG, "SaveCallResult: CONFLICT...this recipe is already in cache")
+                            recipeDao.updateRecipe(
+                                item.recipes[index].recipeId,
+                                item.recipes[index].title,
+                                item.recipes[index].publisher,
+                                item.recipes[index].imageUrl,
+                                item.recipes[index].socialRank.toFloat()
+                            )
+                        }
+                        index++
+                    }
+                }
             }
-        })
-        return mRecipes
-    }
 
-    private fun doneQuery(list: List<Recipe>?) {
-        if (list != null) {
-            if (list.size % 30 != 0) {
-                Log.d(TAG, "LIST SIZE IS ${list.size}")
-                mIsQueryExhausted.value = true
+            override fun shouldFetch(data: MutableList<Recipe>?): Boolean {
+                return true
             }
-        } else {
-            mIsQueryExhausted.value = true
-        }
+
+            override fun loadFromDb(): LiveData<MutableList<Recipe>> {
+                return recipeDao.searchRecipes(query, pageNumber)
+            }
+
+            override fun createCall(): LiveData<ApiResponse<RecipeSearchResponse>> {
+                return ServiceGenerator.getRecipeApi.searchRecipe(query, pageNumber)
+            }
+
+        }.asLiveData()
     }
 
+    fun searchRecipeApi(recipeId: String): LiveData<Resource<Recipe>> {
+        return object : NetworkBoundResource<Recipe, RecipeResponse>() {
+            override fun saveCallResult(item: RecipeResponse?) {
+                if (item?.recipe != null) {
+                    Log.d(TAG, "saveCallResult: ingredients ${item.recipe.ingredients}")
+                    item.recipe.timeStamp = (System.currentTimeMillis() / 1000).toInt()
+                    recipeDao.insertRecipe(item.recipe)
+                }
+            }
 
-    fun searchRecipesApi(query: String, pageNumber: Int) {
-        this.query = query
-        this.pageNumber = pageNumber
-        mIsQueryExhausted.value = false
-        RecipeApiClient.searchRecipesApi(query, pageNumber)
+            override fun shouldFetch(data: Recipe?): Boolean {
+                Log.d(TAG, "shouldFetch: recipe ${data?.toString()}")
+                val currentTime = (System.currentTimeMillis() / 1000).toInt()
+                Log.d(TAG, "shouldFetch: currentTime $currentTime")
+                val lastRefresh = data?.timeStamp ?: 0
+                Log.d(TAG, "shouldFetch: lastRefresh $lastRefresh")
+                val daysDifference = (currentTime - lastRefresh) / (60 * 60 * 24)
+                Log.d(
+                    TAG,
+                    "shouldFetch: daysDifference $daysDifference day"
+                )
+
+                if (daysDifference >= Constants.RECIPE_REFRESH_TIME) {
+                    Log.d(TAG, "shouldFetch: shouldRefresh")
+                    return true
+                }
+                return true
+            }
+
+            override fun loadFromDb(): LiveData<Recipe> {
+                return recipeDao.getRecipe(recipeId)
+            }
+
+            override fun createCall(): LiveData<ApiResponse<RecipeResponse>> {
+                return ServiceGenerator.getRecipeApi.getRecipe(recipeId)
+            }
+
+        }.asLiveData()
     }
 
-    fun getRecipeApi(recipeId: String) {
-        RecipeApiClient.getRecipeApi(recipeId)
-    }
-
-    fun isRecipeRequestTimeOut(): LiveData<Boolean> = RecipeApiClient.recipeRequestTimeOut
-
-    fun getNextRecipesPage() {
-        searchRecipesApi(query, pageNumber + 1)
-    }
-
-    fun cancelRequest() {
-        RecipeApiClient.cancelRequest()
-    }
 }

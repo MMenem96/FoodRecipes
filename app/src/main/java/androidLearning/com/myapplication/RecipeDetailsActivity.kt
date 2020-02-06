@@ -8,14 +8,17 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidLearning.com.myapplication.R
+import androidLearning.com.myapplication.models.Recipe
+import androidLearning.com.myapplication.util.Resource
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import com.bumptech.glide.Glide
-import mitchcourses.com.myapplication.models.Recipe
 import mitchcourses.com.myapplication.viewmodels.RecipeDetailsViewModel
+import org.jetbrains.anko.toast
 
 class RecipeDetailsActivity : BaseActivity() {
+    private var recipe: Recipe? = null
     private val TAG = "RecipeDetailsActivity"
 
 
@@ -26,7 +29,10 @@ class RecipeDetailsActivity : BaseActivity() {
     lateinit var scrollView: ScrollView
 
     private val recipeDetailsViewModel: RecipeDetailsViewModel by lazy {
-        ViewModelProvider(this@RecipeDetailsActivity).get(RecipeDetailsViewModel::class.java)
+        ViewModelProvider(
+            this@RecipeDetailsActivity,
+            ViewModelProvider.AndroidViewModelFactory(this.application)
+        ).get(RecipeDetailsViewModel::class.java)
 
     }
 
@@ -34,43 +40,68 @@ class RecipeDetailsActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_recipe)
         initViews()
-        showProgressBar(View.VISIBLE)
-        subScribeObservers()
         getIncomingIntent()
+        subScribeObservers()
     }
 
     private fun subScribeObservers() {
-        recipeDetailsViewModel.getRecipe.observe(this,
-            Observer<Recipe> { t ->
-                if (t?.recipeId.equals(recipeDetailsViewModel.recipeId))
-                    setRecipeProperties(t)
-                recipeDetailsViewModel.didRetrieveRecipe = true
-            })
+        recipeDetailsViewModel.getRecipeById(recipe?.recipeId ?: "0").observe(this, Observer {
+            if (it != null) {
+                if (it.data != null) {
+                    when (it.status) {
+                        Resource.Status.LOADING -> {
+                            Log.d(TAG, "onChanged: status :Loading ")
+                            showParent(View.GONE)
+                            showProgressBar(View.VISIBLE)
 
-        recipeDetailsViewModel.isRecipeRequestTimeOut()
-            .observe(this, Observer { requestTimeOut ->
-                if (requestTimeOut) {
-                    Log.e(TAG, "Request time out $requestTimeOut")
-                    displayErrorScreen("Error retrieving data. Check network connection")
+                        }
+                        Resource.Status.ERROR -> {
+                            showParent(View.VISIBLE)
+                            showProgressBar(View.GONE)
+                            toast(it.message.toString())
+                            Log.d(TAG, "onChanged: status :ErrorMessage ${it.message}")
+                            setRecipeProperties(it.data)
+                        }
+                        Resource.Status.SUCCESS -> {
+                            Log.d(TAG, "onChanged: status :Success ${it.status}")
+                            showParent(View.VISIBLE)
+                            showProgressBar(View.GONE)
+                            setRecipeProperties(it.data)
+
+                        }
+                    }
                 }
-            })
+            }
+        })
+
 
     }
 
     private fun setRecipeProperties(recipe: Recipe?) {
         if (recipe != null) {
-            showProgressBar(View.GONE)
-            scrollView.visibility = View.VISIBLE
+            Log.d(TAG, "Recipe is not Empty")
             Glide.with(this@RecipeDetailsActivity)
                 .load(recipe.imageUrl)
                 .into(recipeImage)
             recipeTitle.text = recipe.title
             recipeRank.text = recipe.socialRank.toInt().toString()
-
             recipeIngredientsContainer.removeAllViews()
-            for (ingredient in recipe.ingredients) {
+            if (recipe.ingredients.size > 1) {
+                Log.d(TAG, "Ingredients is not empty ${recipe.ingredients.size}")
+                for (ingredient in recipe.ingredients) {
+                    val textView = TextView(this)
+                    textView.text = ingredient
+                    textView.textSize = 15f
+                    textView.layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    recipeIngredientsContainer.addView(textView)
+                }
+            } else {
+                Log.d(TAG, "Ingredients is empty")
                 val textView = TextView(this)
-                textView.text = ingredient
+                textView.text = "Error retrieving Ingredients...\nCheck internet connection"
                 textView.textSize = 15f
                 textView.layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -93,30 +124,14 @@ class RecipeDetailsActivity : BaseActivity() {
 
     private fun getIncomingIntent() {
         if (intent.hasExtra("recipe")) {
-            val recipe: Recipe = intent.getSerializableExtra("recipe") as Recipe
-            recipeDetailsViewModel.getRecipeById(recipe.recipeId)
+            recipe = intent.getSerializableExtra("recipe") as Recipe
         }
 
     }
 
-    private fun displayErrorScreen(errorMessage: String) {
-        recipeTitle.text = "Error retrieving recipe..."
-        recipeRank.text = ""
-        val textView = TextView(this)
-        if (!errorMessage.equals("")) {
-            textView.text = errorMessage
-        } else {
-            textView.text = "Error"
-        }
-        textView.textSize = 15f
 
-        textView.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        recipeIngredientsContainer.addView(textView)
-        scrollView.visibility = View.VISIBLE
-        showProgressBar(View.GONE)
-        recipeDetailsViewModel.didRetrieveRecipe = false
+    fun showParent(visibility: Int) {
+        scrollView.visibility = visibility
+
     }
 }

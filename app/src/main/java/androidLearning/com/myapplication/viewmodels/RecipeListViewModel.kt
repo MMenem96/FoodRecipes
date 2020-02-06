@@ -1,50 +1,103 @@
 package mitchcourses.com.myapplication.viewmodels
 
+import android.app.Application
 import android.util.Log
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.ViewModel
-import mitchcourses.com.myapplication.models.Recipe
-import mitchcourses.com.myapplication.repositories.RecipeRepository
+import androidLearning.com.myapplication.models.Recipe
+import androidLearning.com.myapplication.repositories.RecipeRepository
+import androidLearning.com.myapplication.util.Resource
+import androidLearning.com.myapplication.util.Resource.Status
+import androidx.lifecycle.*
 
-class RecipeListViewModel() : ViewModel() {
-    var isViewingRecipes: Boolean = false
-    var isPreformingQuery: Boolean = false
+class RecipeListViewModel(application: Application) : AndroidViewModel(application) {
 
     private val TAG = "RecipeListViewModel"
+    lateinit var viewStates: MutableLiveData<ViewState>
+    private val recipes: MediatorLiveData<Resource<MutableList<Recipe>>> = MediatorLiveData()
 
+    var isQueryExhausted = false
+    var isPreformingQuery = false
+    var query = ""
+    var pageNumber = 1
+    val QUERY_EXHAUSTED_MESSAGE = "No more results..."
+    private var cancelRequest = false
 
-    fun getRecipes(): LiveData<MutableList<Recipe>> = RecipeRepository.getRecipes()
+    fun getViewState(): LiveData<ViewState> {
+        if (!::viewStates.isInitialized) {
+            viewStates = MutableLiveData()
+            viewStates.value = ViewState.CATEGORIES
+            RecipeRepository.context = getApplication()
+        }
 
-
-    fun searchRecipesApi(query: String, pageNumber: Int) {
-        isPreformingQuery = true
-        isViewingRecipes = true
-        RecipeRepository.searchRecipesApi(query, pageNumber)
+        return viewStates
     }
 
-    fun nextSearchRecipesApi() {
+    fun getRecipes(): LiveData<Resource<MutableList<Recipe>>> = recipes
 
-        if (!isPreformingQuery && isViewingRecipes && isQueryExhausted().value!! == false) {
-            RecipeRepository.getNextRecipesPage()
-            Log.d(TAG, "searchNextPage: called.")
+    fun searchRecipes(query: String, pageNumber: Int) {
+        this.query = query
+        this.pageNumber = pageNumber
+        if (!isPreformingQuery) {
+            isQueryExhausted = false
+            executeSearchQuery()
         }
     }
 
-    fun isQueryExhausted(): LiveData<Boolean> {
-        return RecipeRepository.mIsQueryExhausted
+    fun searchNextPage() {
+        Log.d(TAG, "nextPage called")
+        if (!isQueryExhausted && !isPreformingQuery) {
+            pageNumber++
+            executeSearchQuery()
+        }
     }
 
-    fun onBackPressed(): Boolean {
+    private fun executeSearchQuery() {
+        cancelRequest = false
+        isPreformingQuery = true
+        viewStates.value = ViewState.RECIPES
+        val repositorySource = RecipeRepository.searchRecipesApis(query, pageNumber)
+        recipes.addSource(repositorySource, Observer {
+            //React to the data before sending it to the UI
+            if (!cancelRequest) {
+                if (it != null) {
+                    recipes.postValue(it)
+                    if (it.status == Status.SUCCESS) {
+                        isPreformingQuery = false
+                        if (it.data != null) {
+                            if (it.data.isEmpty()) {
+                                Log.d(TAG, "onChange: Query Exhausted")
+                                recipes.value = Resource.Error(
+                                    QUERY_EXHAUSTED_MESSAGE,
+                                    Status.ERROR,
+                                    it.data
+                                )
+                            }
+                        }
+                        recipes.removeSource(repositorySource)
+                    } else if (it.status == Status.ERROR) {
+                        isPreformingQuery = false
+                        recipes.removeSource(repositorySource)
+                    }
+
+                } else {
+                    recipes.removeSource(repositorySource)
+                }
+            } else {
+                recipes.removeSource(repositorySource)
+            }
+        })
+    }
+
+    fun cancelRequest() {
         if (isPreformingQuery) {
-            //Cancel the query
-            RecipeRepository.cancelRequest()
+            Log.d(TAG, "Cancelling the search request")
+            //    pageNumber=1
+            cancelRequest = true
             isPreformingQuery = false
         }
-        if (isViewingRecipes) {
-            isViewingRecipes = false
-            return false
-        }
-        return true
 
+    }
+
+    enum class ViewState {
+        CATEGORIES, RECIPES
     }
 }
